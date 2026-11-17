@@ -7,7 +7,7 @@
 
 export const CONFIG = {
   // Supabase → Project Settings → API → "Project URL"
-  SUPABASE_URL: 'ofmiyejmkxtrvallmste',
+  SUPABASE_URL: 'SUPABASE_URL: 'https://ofmiyejmkxtrvallmste.supabase.co',
 
   // Supabase → Project Settings → API → "anon public" key
   // (es una clave pública; la seguridad la dan las políticas RLS del archivo schema.sql)
