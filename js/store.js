@@ -4,7 +4,11 @@ import { CONFIG } from './config.js';
 import { uid } from './util.js';
 
 export const COLLS = ['tasks', 'intramed', 'intramed_meetings', 'events', 'days', 'closures', 'bomberazos', 'settings', 'projects', 'docs'];
-const SUPABASE_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const SUPABASE_CDNS = [
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm',
+  'https://esm.sh/@supabase/supabase-js@2',
+  'https://esm.run/@supabase/supabase-js@2',
+];
 
 let sb = null;
 let user = null;
@@ -115,15 +119,28 @@ export const store = {
 
   async init() {
     if (!remote()) { user = null; loadCache(); setStatus('local'); return { ready: true }; }
-    try {
-      const mod = await import(SUPABASE_CDN);
-      sb = mod.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
-    } catch (e) {
-      console.error(e);
-      // Sin conexión en el primer arranque: si hay sesión previa, trabaja con la caché
+    // 1) Revisar la dirección de Supabase antes de cualquier descarga
+    const url = String(CONFIG.SUPABASE_URL).trim().replace(/\/+$/, '');
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(url)) {
+      return { ready: false, error: `La dirección de Supabase en js/config.js no es válida: “${url}”. Debe verse así: https://abcdefghijk.supabase.co (sin /dashboard ni /rest/v1).` };
+    }
+    // 2) Descargar la librería; si un servidor está bloqueado por la red, se prueba el siguiente
+    let mod = null; const fails = [];
+    for (const src of SUPABASE_CDNS) {
+      try { mod = await import(src); if (mod && mod.createClient) break; mod = null; }
+      catch (e) { console.error(src, e); fails.push(new URL(src).host); }
+    }
+    if (!mod) {
       const last = localStorage.getItem('mdc:lastUser');
       if (last) { user = JSON.parse(last); loadCache(); setStatus('offline'); return { ready: true }; }
-      return { ready: false, error: 'No se pudo cargar el servicio de sincronización. Revisa tu conexión.' };
+      return { ready: false, error: `No se pudo descargar la librería de conexión (${fails.join(', ')}). Si estás en la red del hospital, puede estar bloqueada: prueba desde el celular con datos móviles. Si ahí funciona, hay que pedir a TI que permita esos sitios.` };
+    }
+    // 3) Crear el cliente con la clave
+    try {
+      sb = mod.createClient(url, String(CONFIG.SUPABASE_ANON_KEY).trim(), { auth: { persistSession: true, autoRefreshToken: true } });
+    } catch (e) {
+      console.error(e);
+      return { ready: false, error: 'La clave de Supabase en js/config.js no es válida: ' + e.message };
     }
     const { data: s } = await sb.auth.getSession();
     sb.auth.onAuthStateChange((ev, session) => {
